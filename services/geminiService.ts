@@ -1,19 +1,39 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { GeminiExplanation } from '../types';
 
-// Initialize the client securely using the environment variable
-// NOTE: Ensure process.env.API_KEY is set in the runtime environment
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+// Initialize the client lazily to prevent startup crashes
+let ai: GoogleGenAI | null = null;
+
+const getAIClient = () => {
+  if (!ai) {
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) {
+      console.warn("API Key for Gemini is missing. Features relying on it will not work.");
+      // Return a mock or throw a controlled error if critical
+      return null;
+    }
+    ai = new GoogleGenAI({ apiKey });
+  }
+  return ai;
+};
+
 
 export const fetchMoleculeDetails = async (moleculeName: string): Promise<GeminiExplanation> => {
   try {
     const modelId = 'gemini-2.5-flash';
-    
+
     const prompt = `Provide a detailed but concise educational summary for the molecule: ${moleculeName}. 
     Target audience: High school chemistry students.
     Return the response in Portuguese (pt-BR).`;
 
-    const response = await ai.models.generateContent({
+
+    const aiClient = getAIClient();
+    if (!aiClient) {
+      throw new Error("Gemini API Client not initialized (Missing API Key)");
+    }
+
+    const response = await aiClient.models.generateContent({
       model: modelId,
       contents: prompt,
       config: {
