@@ -1,0 +1,5 @@
+{
+  "name": "MoleculAR Gen",
+  "description": "Gerador de QR Codes para visualização de moléculas em Realidade Aumentada (AR) via Google App. Ideal para estudantes e professores de química.",
+  "requestFramePermissions": []
+}
