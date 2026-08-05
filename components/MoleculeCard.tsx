@@ -2,7 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Molecule, MoleculeCategory } from '../types';
-import { Atom, FlaskConical, Dna, Pill, ChevronRight } from 'lucide-react';
+import { Atom, FlaskConical, Dna, Pill, ChevronRight, ExternalLink } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 interface MoleculeCardProps {
@@ -24,6 +24,11 @@ const CategoryIcon = ({ category }: { category: MoleculeCategory }) => {
     default:
       return <Atom className="w-4 h-4 text-gray-400" />;
   }
+};
+
+const formatMolecularWeight = (weight?: number | null): string => {
+  if (!weight) return '';
+  return `${weight.toFixed(2)} g/mol`;
 };
 
 const MoleculeCard: React.FC<MoleculeCardProps> = ({ molecule, isSelected, onClick }) => {
@@ -79,7 +84,29 @@ const MoleculeCard: React.FC<MoleculeCardProps> = ({ molecule, isSelected, onCli
         {molecule.description}
       </p>
 
-      <div className="flex items-center gap-1 text-blue-400 text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+      {/* Dados enriquecidos */}
+      {(molecule.molecularWeight || molecule.externalLinks?.pubchem) && (
+        <div className="flex items-center justify-between mt-3 pt-2 border-t border-slate-700/50">
+          {molecule.molecularWeight && (
+            <span className="text-xs text-slate-500 font-medium">
+              {formatMolecularWeight(molecule.molecularWeight)}
+            </span>
+          )}
+          {molecule.externalLinks?.pubchem && (
+            <a
+              href={molecule.externalLinks.pubchem}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 transition-colors"
+            >
+              PubChem <ExternalLink className="w-3 h-3" />
+            </a>
+          )}
+        </div>
+      )}
+
+      <div className="flex items-center gap-1 text-blue-400 text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity mt-2">
         <span>Ver em AR</span>
         <ChevronRight className="w-3 h-3" />
       </div>

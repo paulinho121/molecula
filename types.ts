@@ -11,6 +11,11 @@ export interface ModelVariants {
   sticks?: string; // Stick model
 }
 
+export interface ExternalLinks {
+  pubchem?: string | null;
+  wikipedia?: string | null;
+}
+
 export interface Molecule {
   id: string;
   name: string;
@@ -20,6 +25,10 @@ export interface Molecule {
   modelPath: string; // Path to GLB/GLTF 3D model file
   description?: string; // Short static description
   modelVariants?: ModelVariants; // Alternative visualization styles
+  molecularWeight?: number | null; // Molecular weight in g/mol
+  meltingPoint?: number | null; // Melting point in °C
+  boilingPoint?: number | null; // Boiling point in °C
+  externalLinks?: ExternalLinks; // Links to external resources
 }
 
 export interface GeminiExplanation {
