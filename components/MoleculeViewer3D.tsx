@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { ModelVariants } from '../types';
+import { cn } from '../lib/utils';
 
 interface MoleculeViewer3DProps {
     modelPath: string;
@@ -41,9 +43,9 @@ const MoleculeViewer3D: React.FC<MoleculeViewer3DProps> = ({
 }) => {
     const [selectedVariant, setSelectedVariant] = useState<ModelVariantType>('cpk');
     const [isLoading, setIsLoading] = useState(true);
+    const [progress, setProgress] = useState(0);
     const modelViewerRef = useRef<HTMLElement>(null);
 
-    // Determine which model to display
     const currentModelPath = modelVariants && modelVariants[selectedVariant]
         ? modelVariants[selectedVariant]
         : modelPath;
@@ -60,34 +62,24 @@ const MoleculeViewer3D: React.FC<MoleculeViewer3DProps> = ({
 
         const handleLoad = () => {
             setIsLoading(false);
-
-            // Apply varied colors to materials
             try {
                 const model = (modelViewer as any).model;
-
                 if (model && model.materials) {
-                    // CPK color palette - varied colors for visual appeal
                     const colorPalette = [
-                        [1.0, 0.05, 0.05, 1],   // Red (Oxygen-like)
-                        [0.19, 0.31, 0.97, 1],  // Blue (Nitrogen-like)
-                        [0.56, 0.56, 0.56, 1],  // Gray (Carbon-like)
-                        [1.0, 1.0, 0.19, 1],    // Yellow (Sulfur-like)
-                        [1.0, 0.5, 0.0, 1],     // Orange (Phosphorus-like)
-                        [0.12, 0.94, 0.12, 1],  // Green (Chlorine-like)
-                        [0.56, 0.88, 0.31, 1],  // Light Green (Fluorine-like)
-                        [1.0, 1.0, 1.0, 1],     // White (Hydrogen-like)
+                        [1.0, 0.05, 0.05, 1],
+                        [0.19, 0.31, 0.97, 1],
+                        [0.56, 0.56, 0.56, 1],
+                        [1.0, 1.0, 0.19, 1],
+                        [1.0, 0.5, 0.0, 1],
+                        [0.12, 0.94, 0.12, 1],
+                        [0.56, 0.88, 0.31, 1],
+                        [1.0, 1.0, 1.0, 1],
                     ];
 
-                    // Apply colors to all materials
                     model.materials.forEach((material: any, index: number) => {
                         if (material && material.pbrMetallicRoughness) {
-                            // Use palette colors in sequence
                             const color = colorPalette[index % colorPalette.length];
-
-                            // Set the base color
                             material.pbrMetallicRoughness.setBaseColorFactor(color);
-
-                            // Set metallic and roughness for better appearance
                             material.pbrMetallicRoughness.setMetallicFactor(0.0);
                             material.pbrMetallicRoughness.setRoughnessFactor(0.8);
                         }
@@ -99,13 +91,15 @@ const MoleculeViewer3D: React.FC<MoleculeViewer3DProps> = ({
         };
 
         const handleProgress = (event: any) => {
+            const percent = event.detail.progress;
+            setProgress(Math.round(percent * 100));
             if (event.detail.totalProgress === 1) {
                 setIsLoading(false);
             }
         };
 
-        // Reset loading when model changes
         setIsLoading(true);
+        setProgress(0);
 
         modelViewer.addEventListener('load', handleLoad);
         modelViewer.addEventListener('progress', handleProgress);
@@ -117,33 +111,71 @@ const MoleculeViewer3D: React.FC<MoleculeViewer3DProps> = ({
     }, [currentModelPath]);
 
     return (
-        <div className="w-full h-full relative">
+        <div className="w-full h-full relative rounded-xl overflow-hidden">
             {/* Model Variant Selector */}
             {modelVariants && (
-                <div className="absolute top-4 left-4 z-10 bg-slate-800/90 backdrop-blur rounded-lg p-2 flex gap-2">
+                <motion.div 
+                    className="absolute top-4 left-4 z-10 bg-slate-800/90 backdrop-blur rounded-lg p-2 flex gap-2 shadow-lg"
+                    initial={{ y: -20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.3 }}
+                >
                     {(Object.keys(modelVariants) as ModelVariantType[]).map((variant) => (
                         <button
                             key={variant}
                             onClick={() => setSelectedVariant(variant)}
-                            className={`px-3 py-1.5 rounded text-sm font-medium transition-all ${selectedVariant === variant
-                                ? 'bg-blue-600 text-white shadow-lg'
-                                : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                                }`}
+                            className={cn(
+                                "px-3 py-1.5 rounded text-sm font-medium transition-all",
+                                selectedVariant === variant
+                                    ? 'bg-blue-600 text-white shadow-lg scale-105'
+                                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600 hover:scale-105'
+                            )}
                         >
                             {variantLabels[variant]}
                         </button>
                     ))}
-                </div>
+                </motion.div>
             )}
 
-            {/* Loading Overlay */}
+            {/* Loading Overlay with Progress */}
             {isLoading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm rounded-xl z-20">
-                    <div className="text-white text-center">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-3"></div>
-                        <p className="text-sm">Carregando modelo 3D...</p>
+                <motion.div 
+                    className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/80 backdrop-blur-sm rounded-xl z-20"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                >
+                    <div className="relative w-20 h-20 mb-4">
+                        <svg className="animate-spin w-full h-full" viewBox="0 0 100 100">
+                            <circle
+                                className="text-slate-700"
+                                strokeWidth="8"
+                                stroke="currentColor"
+                                fill="transparent"
+                                r="42"
+                                cx="50"
+                                cy="50"
+                            />
+                            <circle
+                                className="text-blue-500"
+                                strokeWidth="8"
+                                strokeDasharray={264}
+                                strokeDashoffset={264 - (264 * progress) / 100}
+                                strokeLinecap="round"
+                                stroke="currentColor"
+                                fill="transparent"
+                                r="42"
+                                cx="50"
+                                cy="50"
+                                transform="rotate(-90 50 50)"
+                            />
+                        </svg>
+                        <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-white">
+                            {progress}%
+                        </span>
                     </div>
-                </div>
+                    <p className="text-sm text-slate-300 animate-pulse">Carregando modelo 3D...</p>
+                </motion.div>
             )}
 
             <model-viewer
