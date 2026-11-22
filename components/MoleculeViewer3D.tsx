@@ -11,7 +11,8 @@ interface MoleculeViewer3DProps {
     modelVariants?: ModelVariants;
 }
 
-declare global {
+// React 19 types read intrinsic elements from React.JSX, so augment the 'react' module.
+declare module 'react' {
     namespace JSX {
         interface IntrinsicElements {
             'model-viewer': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
@@ -60,34 +61,11 @@ const MoleculeViewer3D: React.FC<MoleculeViewer3DProps> = ({
         const modelViewer = modelViewerRef.current;
         if (!modelViewer) return;
 
+        // Cores dos átomos vêm dos vértices (COLOR_0) dos GLBs do NIH/ChimeraX.
+        // Não sobrescrever os materiais: uma paleta por índice pintava todos os
+        // átomos com a mesma cor (o material padrão é compartilhado).
         const handleLoad = () => {
             setIsLoading(false);
-            try {
-                const model = (modelViewer as any).model;
-                if (model && model.materials) {
-                    const colorPalette = [
-                        [1.0, 0.05, 0.05, 1],
-                        [0.19, 0.31, 0.97, 1],
-                        [0.56, 0.56, 0.56, 1],
-                        [1.0, 1.0, 0.19, 1],
-                        [1.0, 0.5, 0.0, 1],
-                        [0.12, 0.94, 0.12, 1],
-                        [0.56, 0.88, 0.31, 1],
-                        [1.0, 1.0, 1.0, 1],
-                    ];
-
-                    model.materials.forEach((material: any, index: number) => {
-                        if (material && material.pbrMetallicRoughness) {
-                            const color = colorPalette[index % colorPalette.length];
-                            material.pbrMetallicRoughness.setBaseColorFactor(color);
-                            material.pbrMetallicRoughness.setMetallicFactor(0.0);
-                            material.pbrMetallicRoughness.setRoughnessFactor(0.8);
-                        }
-                    });
-                }
-            } catch (error) {
-                console.error('Error applying colors to materials:', error);
-            }
         };
 
         const handleProgress = (event: any) => {

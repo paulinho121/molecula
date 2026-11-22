@@ -3,6 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { MOLECULES } from '../constants';
 import MoleculeViewer3D from '../components/MoleculeViewer3D';
 import { ArrowLeft, Smartphone, Info } from 'lucide-react';
+import { parseFormula } from '../lib/elements';
+
+const formatValue = (value: number | null | undefined, unit: string) =>
+    value === null || value === undefined ? '—' : `${value} ${unit}`;
 
 const MoleculeAR: React.FC = () => {
     const { moleculeId } = useParams<{ moleculeId: string }>();
@@ -111,6 +115,61 @@ const MoleculeAR: React.FC = () => {
                                     </div>
                                 )}
                             </div>
+                        </div>
+
+                        {/* Chemical Data */}
+                        <div className="bg-slate-900/50 backdrop-blur rounded-2xl border border-slate-700/50 p-6">
+                            <h3 className="font-semibold mb-3">Dados químicos</h3>
+
+                            <div className="space-y-3 mb-4 text-sm">
+                                <div className="flex justify-between text-slate-300">
+                                    <span className="text-slate-400">Massa molecular</span>
+                                    <span>{formatValue(molecule.molecularWeight, 'g/mol')}</span>
+                                </div>
+                                <div className="flex justify-between text-slate-300">
+                                    <span className="text-slate-400">Ponto de fusão</span>
+                                    <span>{formatValue(molecule.meltingPoint, '°C')}</span>
+                                </div>
+                                <div className="flex justify-between text-slate-300">
+                                    <span className="text-slate-400">Ponto de ebulição</span>
+                                    <span>{formatValue(molecule.boilingPoint, '°C')}</span>
+                                </div>
+                            </div>
+
+                            <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Elementos</h4>
+                            <table className="w-full text-sm text-slate-300">
+                                <thead>
+                                    <tr className="text-xs text-slate-500 text-left">
+                                        <th className="font-medium pb-1">Símbolo</th>
+                                        <th className="font-medium pb-1">Elemento</th>
+                                        <th className="font-medium pb-1 text-right">Nº atômico</th>
+                                        <th className="font-medium pb-1 text-right">Massa (u)</th>
+                                        <th className="font-medium pb-1 text-right">Átomos</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {parseFormula(molecule.formula).map((el) => (
+                                        <tr key={el.symbol} className="border-t border-slate-700/50">
+                                            <td className="py-1.5 font-mono font-bold text-white">{el.symbol}</td>
+                                            <td className="py-1.5">{el.name}</td>
+                                            <td className="py-1.5 text-right font-mono">{el.atomicNumber}</td>
+                                            <td className="py-1.5 text-right font-mono">{el.atomicMass}</td>
+                                            <td className="py-1.5 text-right font-mono">{el.count}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+
+                            {molecule.externalLinks?.pubchem && (
+                                <a
+                                    href={molecule.externalLinks.pubchem}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="mt-4 inline-block text-xs text-blue-400 hover:text-blue-300"
+                                >
+                                    Ver no PubChem →
+                                </a>
+                            )}
                         </div>
 
                         {/* Controls Info */}
