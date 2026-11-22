@@ -208,7 +208,8 @@ def build_mesh(atoms, bonds, style: str) -> Mesh:
             mesh.add_sphere(pos, BAS_ATOM_RADIUS, col)
         bond_radius = BAS_BOND_RADIUS
     else:  # sticks
-        bonded = {i for b in bonds for i in b}
+        # Sem ligações (ex.: sais iônicos), mostra os átomos como esferas.
+        bonded = {i for b in bonds for i in b} or set(range(len(atoms)))
         for i in bonded:
             mesh.add_sphere(positions[i], STICK_RADIUS, colors[i])
         bond_radius = STICK_RADIUS
