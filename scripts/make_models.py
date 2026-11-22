@@ -81,6 +81,80 @@ def fetch_sdf(query: str, by_cid: bool) -> str:
     raise RuntimeError(f"Falha ao baixar '{query}'")
 
 
+def fetch_pdb(pdb_id: str) -> str:
+    """Baixa o arquivo PDB da estrutura no RCSB (macromoléculas, proteínas etc.)."""
+    url = f"https://files.rcsb.org/download/{pdb_id.upper()}.pdb"
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            return resp.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as err:
+        raise RuntimeError(f"RCSB não encontrou '{pdb_id}' ({err.code})") from err
+
+
+# ---------------------------------------------------------------- PDB parsing
+
+COVALENT_RADII = {
+    "H": 0.31, "C": 0.76, "N": 0.71, "O": 0.66, "F": 0.57, "P": 1.07,
+    "S": 1.05, "Cl": 1.02, "Br": 1.20, "I": 1.39, "Na": 1.66, "K": 2.03,
+    "Mg": 1.41, "Ca": 1.76, "Fe": 1.32, "Zn": 1.22, "Cu": 1.32, "Co": 1.26,
+    "Se": 1.20, "Mn": 1.39,
+}
+
+
+def parse_pdb(text: str, chains=None, skip_water: bool = True):
+    """Lê ATOM/HETATM do PDB. Retorna (átomos, ligações por distância)."""
+    atoms = []
+    for line in text.splitlines():
+        if not (line.startswith("ATOM") or line.startswith("HETATM")):
+            continue
+        resname = line[17:20].strip()
+        if skip_water and resname in ("HOH", "WAT"):
+            continue
+        chain = line[21:22].strip()
+        if chains and chain not in chains:
+            continue
+        altloc = line[16:17].strip()
+        if altloc not in ("", "A"):
+            continue
+        x, y, z = float(line[30:38]), float(line[38:46]), float(line[46:54])
+        element = line[76:78].strip()
+        if not element:
+            element = line[12:16].strip().lstrip("0123456789")[:1]
+        element = element.capitalize() if len(element) == 2 else element.upper()
+        atoms.append((element, (x, y, z)))
+    if not atoms:
+        raise ValueError("nenhum átomo encontrado no PDB (verifique --chains)")
+    return atoms, bonds_by_distance(atoms)
+
+
+def bonds_by_distance(atoms):
+    """Ligações covalentes por distância (grade espacial para não ser O(n²))."""
+    cell = 2.5  # maior distância de ligação possível (S–S ≈ 2.4 Å com tolerância)
+    grid = {}
+    for idx, (_, (x, y, z)) in enumerate(atoms):
+        key = (int(x // cell), int(y // cell), int(z // cell))
+        grid.setdefault(key, []).append(idx)
+
+    bonds = []
+    for i, (sym_i, pos_i) in enumerate(atoms):
+        kx, ky, kz = int(pos_i[0] // cell), int(pos_i[1] // cell), int(pos_i[2] // cell)
+        r_i = COVALENT_RADII.get(sym_i, 0.8)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for dz in (-1, 0, 1):
+                    for j in grid.get((kx + dx, ky + dy, kz + dz), ()):
+                        if j <= i:
+                            continue
+                        sym_j, pos_j = atoms[j]
+                        r_j = COVALENT_RADII.get(sym_j, 0.8)
+                        limit = (r_i + r_j) * 1.15
+                        d2 = sum((a - b) ** 2 for a, b in zip(pos_i, pos_j))
+                        if 0.16 < d2 < limit * limit:
+                            bonds.append((i, j))
+    return bonds
+
+
 # ---------------------------------------------------------------- SDF parsing
 
 def parse_sdf(text: str):
@@ -134,11 +208,14 @@ def _cross(a, b):
 class Mesh:
     """Acumula vértices (posição, normal, cor RGBA) e triângulos."""
 
-    def __init__(self):
+    def __init__(self, low_detail: bool = False):
         self.positions = []
         self.normals = []
         self.colors = []
         self.indices = []
+        # Menos segmentos para estruturas grandes, para o GLB não ficar enorme.
+        self.sphere_rings, self.sphere_segments = (6, 8) if low_detail else (12, 16)
+        self.cyl_segments = 6 if low_detail else 12
 
     def add_quad_grid(self, grid, color):
         # grid: matriz (linhas x colunas) de (posição, normal)
@@ -158,7 +235,9 @@ class Mesh:
                 e = d + 1
                 self.indices.extend([a, d, b, b, d, e])
 
-    def add_sphere(self, center, radius, color, rings=12, segments=16):
+    def add_sphere(self, center, radius, color, rings=None, segments=None):
+        rings = rings or self.sphere_rings
+        segments = segments or self.sphere_segments
         grid = []
         for i in range(rings + 1):
             theta = math.pi * i / rings
@@ -170,7 +249,8 @@ class Mesh:
             grid.append(row)
         self.add_quad_grid(grid, color)
 
-    def add_cylinder(self, p0, p1, radius, color, segments=12):
+    def add_cylinder(self, p0, p1, radius, color, segments=None):
+        segments = segments or self.cyl_segments
         axis = _sub(p1, p0)
         if math.sqrt(sum(c * c for c in axis)) < 1e-6:
             return
@@ -192,8 +272,8 @@ class Mesh:
 
 # ---------------------------------------------------------------- montagem
 
-def build_mesh(atoms, bonds, style: str) -> Mesh:
-    mesh = Mesh()
+def build_mesh(atoms, bonds, style: str, low_detail: bool = False) -> Mesh:
+    mesh = Mesh(low_detail=low_detail)
     colors = [CPK_COLORS.get(sym, DEFAULT_COLOR) + (255,) for sym, _ in atoms]
     positions = [pos for _, pos in atoms]
 
@@ -301,6 +381,30 @@ def slugify(text: str) -> str:
     return slug or "molecule"
 
 
+def convert_pdb(pdb_id: str, chains, slug: str, out_dir: Path):
+    print(f"[PDB {pdb_id}] baixando do RCSB...")
+    text = fetch_pdb(pdb_id)
+    atoms, bonds = parse_pdb(text, chains=chains)
+    print(f"  {len(atoms)} átomos, {len(bonds)} ligações")
+    low = len(atoms) > 1500
+    if low:
+        print("  estrutura grande: usando esferas de menor resolução")
+
+    cx = sum(p[0] for _, p in atoms) / len(atoms)
+    cy = sum(p[1] for _, p in atoms) / len(atoms)
+    cz = sum(p[2] for _, p in atoms) / len(atoms)
+    atoms = [(s, (p[0] - cx, p[1] - cy, p[2] - cz)) for s, p in atoms]
+
+    files = {}
+    for style in ("cpk", "bas", "sticks"):
+        mesh = build_mesh(atoms, bonds, style, low_detail=low)
+        out = out_dir / f"{slug}-{style}.glb"
+        write_glb(mesh, out, f"{slug}-{style}")
+        files[style] = out
+        print(f"  gerado: {out} ({out.stat().st_size // 1024} KB)")
+    return files
+
+
 def convert(query: str, by_cid: bool, slug: str, out_dir: Path):
     print(f"[{query}] baixando do PubChem...")
     sdf = fetch_sdf(query, by_cid)
@@ -330,14 +434,32 @@ def main(argv=None):
     parser.add_argument("names", nargs="*", help="nomes de compostos em inglês (PubChem)")
     parser.add_argument("--cid", help="CID do PubChem (use com --slug)")
     parser.add_argument("--slug", help="nome dos arquivos gerados (padrão: nome em minúsculas)")
+    parser.add_argument("--pdb", help="ID de estrutura do RCSB (ex.: 1A3N), em vez de nome/CID")
+    parser.add_argument("--chains", help="cadeias do PDB a incluir, separadas por vírgula (ex.: A,B)")
     parser.add_argument("--out", default="public/models", help="pasta de saída (padrão: public/models)")
     args = parser.parse_args(argv)
 
-    if not args.names and not args.cid:
-        parser.error("informe nomes de compostos ou --cid")
+    if not args.names and not args.cid and not args.pdb:
+        parser.error("informe nomes de compostos, --cid ou --pdb")
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.pdb:
+        if not args.slug:
+            parser.error("--pdb precisa de --slug")
+        chains = [c.strip() for c in args.chains.split(",")] if args.chains else None
+        try:
+            files = convert_pdb(args.pdb, chains, slugify(args.slug), out_dir)
+        except Exception as err:
+            print(f"  ERRO em PDB '{args.pdb}': {err}", file=sys.stderr)
+            return 1
+        print("  modelVariants sugerido para constants.ts:")
+        print("    modelVariants: {")
+        for style in ("cpk", "bas", "sticks"):
+            print(f"      {style}: '/models/{files[style].name}',")
+        print("    },")
+        return 0
 
     jobs = []
     if args.cid:
